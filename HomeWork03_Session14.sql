@@ -1,125 +1,8 @@
--- =========================================================================
--- PHÂN TÍCH YÊU CẦU BÀI TOÁN
--- =========================================================================
-
--- 1. XÁC ĐỊNH DỮ LIỆU ĐẦU VÀO VÀ ĐẦU RA
-/*
-Dữ liệu đầu vào:
-- p_patient_id INT:
-  Mã bệnh nhân cần cấp phát thuốc.
-
-- p_medicine_id INT:
-  Mã thuốc cần cấp phát.
-
-- p_quantity INT:
-  Số lượng thuốc yêu cầu cấp phát.
-
-Dữ liệu đầu ra:
-- p_status_message VARCHAR(255):
-  Thông báo trạng thái trả về cho màn hình ứng dụng.
-
-  Ví dụ:
-  + "Đã cấp phát thành công"
-  + "Lỗi: Số lượng tồn kho không đủ"
-  + "Lỗi: Mã thuốc không tồn tại"
-*/
-
--- 2. ĐỀ XUẤT LOẠI THAM SỐ PHÙ HỢP
-/*
-Sử dụng:
-- IN parameter:
-  Dùng để nhận dữ liệu đầu vào từ người dùng gửi vào Procedure.
-
-- OUT parameter:
-  Dùng để trả kết quả xử lý hoặc thông báo trạng thái về ứng dụng.
-
-Cụ thể:
-IN  p_patient_id INT
-IN  p_medicine_id INT
-IN  p_quantity INT
-OUT p_status_message VARCHAR(255)
-
-Lý do lựa chọn:
-- IN giúp Procedure nhận dữ liệu từ hệ thống cấp phát thuốc.
-- OUT giúp trả thông báo trực tiếp cho giao diện người dùng.
-- VARCHAR(255) phù hợp để hiển thị các thông báo nghiệp vụ.
-*/
-
--- =========================================================================
--- GIẢI PHÁP ÁP DỤNG KIỂM SOÁT GIAO DỊCH (TRANSACTION CONTROL)
--- =========================================================================
-
-/*
-Mục tiêu:
-Đảm bảo dữ liệu luôn chính xác và đồng bộ giữa:
-1. Kho thuốc (Medicines)
-2. Công nợ bệnh nhân (Patient_Invoices)
-
-Áp dụng Transaction để đảm bảo tính Atomicity:
-- Hoặc tất cả thao tác cùng thành công.
-- Hoặc toàn bộ bị hủy (ROLLBACK) nếu xảy ra lỗi.
-
-Các bước thực hiện:
-
-Bước 1:
-Bắt đầu Transaction bằng START TRANSACTION.
-
-Bước 2:
-Kiểm tra:
-- Bệnh nhân có tồn tại không.
-- Thuốc có tồn tại không.
-- Số lượng nhập có hợp lệ không.
-- Tồn kho có đủ không.
-
-Bước 3:
-Khóa dòng dữ liệu thuốc bằng FOR UPDATE
-để tránh nhiều nhân viên cùng cấp phát gây âm kho.
-
-Bước 4:
-Nếu hợp lệ:
-- Trừ số lượng thuốc trong kho.
-- Cộng tiền thuốc vào công nợ bệnh nhân.
-
-Bước 5:
-Nếu tất cả thành công:
-- COMMIT để lưu dữ liệu vĩnh viễn.
-
-Bước 6:
-Nếu có lỗi:
-- ROLLBACK để hoàn tác toàn bộ giao dịch.
-- Trả thông báo lỗi cho người dùng.
-*/
-
--- =========================================================================
--- GIẢI THÍCH ÁP DỤNG ACID TRONG BÀI TOÁN
--- =========================================================================
-
-/*
-A - Atomicity (Tính nguyên tử)
-- Nếu một thao tác thất bại thì toàn bộ giao dịch rollback.
-- Không xảy ra trường hợp đã trừ kho nhưng chưa cộng công nợ.
-
-C - Consistency (Tính nhất quán)
-- Không cho phép cấp phát vượt quá tồn kho.
-- Dữ liệu sau giao dịch luôn hợp lệ.
-
-I - Isolation (Tính cô lập)
-- Sử dụng SELECT ... FOR UPDATE để khóa dữ liệu.
-- Tránh race condition khi nhiều người cùng thao tác.
-
-D - Durability (Tính bền vững)
-- Sau COMMIT, dữ liệu được lưu vĩnh viễn trong hệ thống.
-*/
-
 DROP DATABASE IF EXISTS RikkeiClinicDB;
 CREATE DATABASE RikkeiClinicDB;
 USE RikkeiClinicDB;
 
--- =========================================================================
--- PHẦN 1: KHỞI TẠO CẤU TRÚC BẢNG
--- =========================================================================
-
--- 1. Bảng Bệnh nhân
+-- Bảng Bệnh nhân
 CREATE TABLE Patients (
     patient_id INT PRIMARY KEY,
     full_name VARCHAR(100) NOT NULL,
@@ -127,7 +10,7 @@ CREATE TABLE Patients (
     date_of_birth DATE
 );
 
--- 2. Bảng Nhân sự / Bác sĩ
+-- Bảng Nhân viên / Bác sĩ
 CREATE TABLE Employees (
     employee_id INT PRIMARY KEY,
     full_name VARCHAR(100) NOT NULL,
@@ -135,40 +18,48 @@ CREATE TABLE Employees (
     salary DECIMAL(18,2) NOT NULL
 );
 
--- 3. Bảng Khoa
+-- Bảng Khoa
 CREATE TABLE Departments (
     dept_id INT PRIMARY KEY,
     dept_name VARCHAR(100) NOT NULL
 );
 
--- 4. Bảng Giường bệnh
+-- Bảng Giường bệnh
 CREATE TABLE Beds (
     bed_id INT PRIMARY KEY,
     dept_id INT NOT NULL,
     patient_id INT DEFAULT NULL,
-    FOREIGN KEY (dept_id) REFERENCES Departments(dept_id),
-    FOREIGN KEY (patient_id) REFERENCES Patients(patient_id)
+
+    FOREIGN KEY (dept_id)
+        REFERENCES Departments(dept_id),
+
+    FOREIGN KEY (patient_id)
+        REFERENCES Patients(patient_id)
 );
 
--- 5. Bảng Lịch khám
+-- Bảng Lịch khám
 CREATE TABLE Appointments (
     appointment_id INT PRIMARY KEY,
     patient_id INT NOT NULL,
     doctor_id INT NOT NULL,
     appointment_date DATETIME NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'Pending',
-    FOREIGN KEY (patient_id) REFERENCES Patients(patient_id),
-    FOREIGN KEY (doctor_id) REFERENCES Employees(employee_id)
+
+    FOREIGN KEY (patient_id)
+        REFERENCES Patients(patient_id),
+
+    FOREIGN KEY (doctor_id)
+        REFERENCES Employees(employee_id)
 );
 
--- 6. Bảng Kho vật tư y tế
+-- Bảng Kho vật tư
 CREATE TABLE Inventory (
     item_id INT PRIMARY KEY,
     item_name VARCHAR(100) NOT NULL,
     stock_quantity INT NOT NULL DEFAULT 0
 );
 
--- 7. Bảng Kho thuốc
+-- Bảng Thuốc
 CREATE TABLE Medicines (
     medicine_id INT PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
@@ -176,15 +67,17 @@ CREATE TABLE Medicines (
     stock INT NOT NULL DEFAULT 0
 );
 
--- 8. Bảng Công nợ bệnh nhân
+-- Bảng Công nợ bệnh nhân
 CREATE TABLE Patient_Invoices (
     patient_id INT PRIMARY KEY,
     total_due DECIMAL(18,2) NOT NULL DEFAULT 0,
     last_updated DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (patient_id) REFERENCES Patients(patient_id)
+
+    FOREIGN KEY (patient_id)
+        REFERENCES Patients(patient_id)
 );
 
--- 9. Bảng Sản phẩm
+-- Bảng Sản phẩm
 CREATE TABLE Products (
     product_id INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(150) NOT NULL,
@@ -192,35 +85,37 @@ CREATE TABLE Products (
     stock INT NOT NULL DEFAULT 0
 );
 
--- 10. Bảng Dịch vụ
+-- Bảng Dịch vụ
 CREATE TABLE Services (
     service_id INT PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
     price DECIMAL(18,2) NOT NULL
 );
 
--- 11. Bảng Ví điện tử
+-- Bảng Ví điện tử
 CREATE TABLE Wallets (
     patient_id INT PRIMARY KEY,
     balance DECIMAL(18,2) NOT NULL DEFAULT 0,
     status VARCHAR(20) NOT NULL DEFAULT 'Active',
-    FOREIGN KEY (patient_id) REFERENCES Patients(patient_id)
+
+    FOREIGN KEY (patient_id)
+        REFERENCES Patients(patient_id)
 );
 
--- 12. Bảng Lịch sử sử dụng dịch vụ
+-- Bảng Lịch sử sử dụng dịch vụ
 CREATE TABLE Service_Usages (
     usage_id INT AUTO_INCREMENT PRIMARY KEY,
     patient_id INT NOT NULL,
     service_id INT NOT NULL,
     actual_price DECIMAL(18,2) DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (patient_id) REFERENCES Patients(patient_id),
-    FOREIGN KEY (service_id) REFERENCES Services(service_id)
-);
 
--- =========================================================================
--- PHẦN 2: CHÈN DỮ LIỆU MẪU
--- =========================================================================
+    FOREIGN KEY (patient_id)
+        REFERENCES Patients(patient_id),
+
+    FOREIGN KEY (service_id)
+        REFERENCES Services(service_id)
+);
 
 INSERT INTO Patients VALUES
 (1, 'Nguyen Van An', '0901111222', '1990-05-15'),
@@ -228,9 +123,9 @@ INSERT INTO Patients VALUES
 (3, 'Le Hoang Cuong', '0923333444', '2000-12-01');
 
 INSERT INTO Employees VALUES
-(101, 'Dr. Hoang Minh', 'Doctor', 20000.00),
-(102, 'Dr. Lan Anh', 'Doctor', 25000.00),
-(103, 'Nurse Thu Ha', 'Nurse', 12000.00);
+(101, 'Dr. Hoang Minh', 'Doctor', 20000),
+(102, 'Dr. Lan Anh', 'Doctor', 25000),
+(103, 'Nurse Thu Ha', 'Nurse', 12000);
 
 INSERT INTO Departments VALUES
 (1, 'Khoa Ngoai'),
@@ -257,35 +152,63 @@ INSERT INTO Medicines VALUES
 (2, 'Panadol Extra', 5000, 5);
 
 INSERT INTO Patient_Invoices VALUES
-(1, 1500000.00, CURRENT_TIMESTAMP),
+(1, 1500000, CURRENT_TIMESTAMP),
 (2, 0, CURRENT_TIMESTAMP),
 (3, 0, CURRENT_TIMESTAMP);
 
 INSERT INTO Products(name, price, stock) VALUES
-('May do huyet ap Omron', 850000.00, 20),
-('May do duong huyet', 450000.00, 15);
+('May do huyet ap Omron', 850000, 20),
+('May do duong huyet', 450000, 15);
 
 INSERT INTO Services VALUES
-(1, 'Sieu am o bung', 200000.00),
-(2, 'Xet nghiem mau', 150000.00),
-(3, 'Chup X-Quang', 250000.00);
+(1, 'Sieu am o bung', 200000),
+(2, 'Xet nghiem mau', 150000),
+(3, 'Chup X-Quang', 250000);
 
 INSERT INTO Wallets VALUES
-(1, 500000.00, 'Active'),
-(2, 50000.00, 'Active'),
-(3, 1000000.00, 'Inactive');
+(1, 500000, 'Active'),
+(2, 50000, 'Active'),
+(3, 1000000, 'Inactive');
 
--- =========================================================================
--- PHẦN 3: GIẢI THÍCH KIỂM SOÁT GIAO DỊCH (ACID)
--- =========================================================================
+/*
 
--- =========================================================================
--- PHẦN 4: STORED PROCEDURE KIỂM SOÁT GIAO DỊCH
--- =========================================================================
+Dữ liệu đầu vào:
+- p_patient_id INT
+- p_medicine_id INT
+- p_quantity INT
+
+Dữ liệu đầu ra:
+- p_status_message VARCHAR(255)
+
+Procedure sử dụng:
+- IN parameter để nhận dữ liệu đầu vào.
+- OUT parameter để trả trạng thái xử lý.
+
+Giải pháp áp dụng:
+- Kiểm tra dữ liệu trước khi cập nhật.
+- Sử dụng TRANSACTION để đảm bảo dữ liệu đồng bộ.
+- Dùng COMMIT khi thành công.
+- Dùng ROLLBACK nếu có lỗi.
+- Dùng FOR UPDATE để khóa dữ liệu tránh race condition.
+
+Áp dụng ACID:
+- Atomicity:
+  Không xảy ra trường hợp đã trừ kho nhưng chưa cộng công nợ.
+
+- Consistency:
+  Không cho phép cấp phát vượt quá tồn kho.
+
+- Isolation:
+  FOR UPDATE giúp tránh nhiều người cùng sửa dữ liệu.
+
+- Durability:
+  Sau COMMIT dữ liệu được lưu vĩnh viễn.
+
+*/
+
+DROP PROCEDURE IF EXISTS Proc_DispenseMedicine;
 
 DELIMITER //
-
-DROP PROCEDURE IF EXISTS Proc_DispenseMedicine //
 
 CREATE PROCEDURE Proc_DispenseMedicine(
     IN p_patient_id INT,
@@ -293,38 +216,35 @@ CREATE PROCEDURE Proc_DispenseMedicine(
     IN p_quantity INT,
     OUT p_status_message VARCHAR(255)
 )
-BEGIN
 
-    -- =========================================================
-    -- KHAI BÁO BIẾN
-    -- =========================================================
+proc_main: BEGIN
 
     DECLARE v_stock INT;
     DECLARE v_price DECIMAL(18,2);
 
-    DECLARE v_patient_exists INT DEFAULT 0;
-    DECLARE v_medicine_exists INT DEFAULT 0;
-
-    -- =========================================================
-    -- XỬ LÝ NGOẠI LỆ HỆ THỐNG
-    -- =========================================================
+    DECLARE v_patient_exists INT;
+    DECLARE v_medicine_exists INT;
 
     DECLARE EXIT HANDLER FOR SQLEXCEPTION
     BEGIN
+
         ROLLBACK;
+
         SET p_status_message =
-        'Lỗi: Giao dịch thất bại do sự cố hệ thống.';
+        'Lỗi hệ thống: Giao dịch đã được hoàn tác.';
+
     END;
 
-    -- =========================================================
-    -- BẮT ĐẦU TRANSACTION
-    -- =========================================================
+    IF p_quantity <= 0 THEN
+
+        SET p_status_message =
+        'Lỗi: Số lượng cấp phát phải lớn hơn 0.';
+
+        LEAVE proc_main;
+
+    END IF;
 
     START TRANSACTION;
-
-    -- =========================================================
-    -- KIỂM TRA BỆNH NHÂN
-    -- =========================================================
 
     SELECT COUNT(*)
     INTO v_patient_exists
@@ -336,163 +256,98 @@ BEGIN
         ROLLBACK;
 
         SET p_status_message =
-        'Lỗi: Mã bệnh nhân không tồn tại.';
+        'Lỗi: Không tìm thấy bệnh nhân.';
 
-    ELSE
-
-        -- =====================================================
-        -- KIỂM TRA THUỐC
-        -- =====================================================
-
-        SELECT COUNT(*)
-        INTO v_medicine_exists
-        FROM Medicines
-        WHERE medicine_id = p_medicine_id;
-
-        IF v_medicine_exists = 0 THEN
-
-            ROLLBACK;
-
-            SET p_status_message =
-            'Lỗi: Mã thuốc không tồn tại.';
-
-        ELSEIF p_quantity <= 0 THEN
-
-            ROLLBACK;
-
-            SET p_status_message =
-            'Lỗi: Số lượng cấp phát phải lớn hơn 0.';
-
-        ELSE
-
-            -- =================================================
-            -- KHÓA DỮ LIỆU THUỐC TRÁNH RACE CONDITION
-            -- =================================================
-
-            SELECT stock, price
-            INTO v_stock, v_price
-            FROM Medicines
-            WHERE medicine_id = p_medicine_id
-            FOR UPDATE;
-
-            -- =============================================
-            -- KIỂM TRA TỒN KHO
-            -- =============================================
-
-            IF p_quantity > v_stock THEN
-
-                ROLLBACK;
-
-                SET p_status_message =
-                'Lỗi: Số lượng tồn kho không đủ';
-
-            ELSE
-
-                -- =========================================
-                -- THAO TÁC 1: TRỪ KHO
-                -- =========================================
-
-                UPDATE Medicines
-                SET stock = stock - p_quantity
-                WHERE medicine_id = p_medicine_id;
-
-                -- =========================================
-                -- THAO TÁC 2: CỘNG CÔNG NỢ
-                -- =========================================
-
-                INSERT INTO Patient_Invoices(
-                    patient_id,
-                    total_due,
-                    last_updated
-                )
-                VALUES(
-                    p_patient_id,
-                    (p_quantity * v_price),
-                    CURRENT_TIMESTAMP
-                )
-
-                ON DUPLICATE KEY UPDATE
-                    total_due = total_due + (p_quantity * v_price),
-                    last_updated = CURRENT_TIMESTAMP;
-
-                -- =========================================
-                -- XÁC NHẬN THÀNH CÔNG
-                -- =========================================
-
-                COMMIT;
-
-                SET p_status_message =
-                'Đã cấp phát thành công';
-
-            END IF;
-
-        END IF;
+        LEAVE proc_main;
 
     END IF;
+
+    SELECT COUNT(*)
+    INTO v_medicine_exists
+    FROM Medicines
+    WHERE medicine_id = p_medicine_id;
+
+    IF v_medicine_exists = 0 THEN
+
+        ROLLBACK;
+
+        SET p_status_message =
+        'Lỗi: Không tìm thấy thuốc.';
+
+        LEAVE proc_main;
+
+    END IF;
+
+    SELECT stock, price
+    INTO v_stock, v_price
+    FROM Medicines
+    WHERE medicine_id = p_medicine_id
+    FOR UPDATE;
+
+    IF p_quantity > v_stock THEN
+
+        ROLLBACK;
+
+        SET p_status_message =
+        'Lỗi: Số lượng tồn kho không đủ.';
+
+        LEAVE proc_main;
+
+    END IF;
+
+    UPDATE Medicines
+    SET stock = stock - p_quantity
+    WHERE medicine_id = p_medicine_id;
+
+    INSERT INTO Patient_Invoices(
+        patient_id,
+        total_due,
+        last_updated
+    )
+    VALUES(
+        p_patient_id,
+        (p_quantity * v_price),
+        CURRENT_TIMESTAMP
+    )
+
+    ON DUPLICATE KEY UPDATE
+        total_due = total_due + (p_quantity * v_price),
+        last_updated = CURRENT_TIMESTAMP;
+
+    COMMIT;
+
+    SET p_status_message =
+    'Đã cấp phát thuốc thành công.';
 
 END //
 
 DELIMITER ;
 
--- =========================================================================
--- PHẦN 5: KIỂM THỬ HỆ THỐNG
--- =========================================================================
+CALL Proc_DispenseMedicine(1, 2, 3, @msg);
 
--- Reset dữ liệu test
-UPDATE Medicines
-SET stock = 5
+SELECT @msg AS 'Ket qua';
+
+SELECT * FROM Medicines
 WHERE medicine_id = 2;
 
-UPDATE Patient_Invoices
-SET total_due = 1500000.00
+SELECT * FROM Patient_Invoices
 WHERE patient_id = 1;
 
--- -------------------------------------------------------------------------
--- TEST CASE 1: CẤP PHÁT HỢP LỆ
--- -------------------------------------------------------------------------
+CALL Proc_DispenseMedicine(1, 2, 10, @msg);
 
-SET @msg1 = '';
+SELECT @msg AS 'Ket qua';
 
-CALL Proc_DispenseMedicine(1, 2, 3, @msg1);
-
-SELECT @msg1 AS 'Thông báo hệ thống';
-
--- Kiểm tra tồn kho
-SELECT
-    medicine_id,
-    name,
-    stock AS 'Tồn kho sau giao dịch'
-FROM Medicines
+SELECT * FROM Medicines
 WHERE medicine_id = 2;
 
--- Kiểm tra công nợ
-SELECT
-    patient_id,
-    total_due AS 'Tổng công nợ sau giao dịch'
-FROM Patient_Invoices
-WHERE patient_id = 1;
+CALL Proc_DispenseMedicine(1, 999, 1, @msg);
 
--- -------------------------------------------------------------------------
--- TEST CASE 2: CẤP PHÁT VƯỢT QUÁ TỒN KHO
--- -------------------------------------------------------------------------
+SELECT @msg AS 'Ket qua';
 
-SET @msg2 = '';
+CALL Proc_DispenseMedicine(999, 1, 1, @msg);
 
-CALL Proc_DispenseMedicine(1, 2, 10, @msg2);
+SELECT @msg AS 'Ket qua';
 
-SELECT @msg2 AS 'Thông báo hệ thống';
+CALL Proc_DispenseMedicine(1, 1, -5, @msg);
 
--- Kiểm tra tồn kho
-SELECT
-    medicine_id,
-    name,
-    stock AS 'Tồn kho sau rollback'
-FROM Medicines
-WHERE medicine_id = 2;
-
--- Kiểm tra công nợ
-SELECT
-    patient_id,
-    total_due AS 'Tổng công nợ sau rollback'
-FROM Patient_Invoices
-WHERE patient_id = 1;
+SELECT @msg AS 'Ket qua';
